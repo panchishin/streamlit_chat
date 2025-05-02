@@ -46,14 +46,18 @@ def prepend_system_message(history:list[ChatMessage]):
     if len(history) == 0 or history[0].role != "system":
         history.insert(0,ChatMessage(role="system", content=system_prompt))
 
-def ollama_ask(history: list[ChatMessage], temperature: float = 0.01, model="qwen2.5:7b"):
+temperature = 0.4
+top_k = 20
+model = "qwen2.5:7b"
+
+def ollama_ask(history: list[ChatMessage]):
 
     prepend_system_message(history)
 
     payload = {
         "model": model,
         "messages": list({"role": item.role, "content": item.content } for item in history),
-        "options" : {"temperature":temperature},
+        "options" : {"temperature":temperature, "top-k":top_k},
         "stream": True,
     }
 
@@ -122,7 +126,7 @@ def docker_ask(system: str, question: str, history: ChatHistory, temperature: fl
 ask = docker_ask if SERVICE == "DOCKER" else ollama_ask
 """
 
-ask = ollama_ask
+
 
 def load_file(partial_name: str) -> tuple[str, str]:
     """
@@ -190,6 +194,32 @@ class HandlerClear:
         history.clear()
         yield "history reset"
 
+class HandlerSet:
+    def desc(self):
+        return "/set [top_k, temp] - query or set the values"
+    def match(self, question:str, history:list[ChatMessage]) -> float:
+        return 1.0 if question.startswith('/set') else 0.0
+    def do(self, question:str, history:list[ChatMessage]):
+        global system_prompt, top_k, temperature
+        parts = question.split()
+        if len(parts) == 2 and parts[1] == "top_k":
+            yield f"top_k is set to {top_k}"
+        elif len(parts) == 2 and parts[1] == "temp":
+            yield f"temp is set to {temperature}"
+        elif len(parts) == 2:
+            yield f"Unknown setting {parts[1]}"
+        elif len(parts) == 3 and parts[1] == "top_k":
+            yield f"top_k was {top_k}. "
+            top_k = int(parts[2])
+            yield f"Updated to {top_k}"
+        elif len(parts) == 3 and parts[1] == "temp":
+            yield f"temp was {temperature}. "
+            temperature = float(parts[2])
+            yield f"Updated to {temperature}"
+        else:
+            yield f"top_k is set to {top_k}\n"
+            yield f"temp is set to {temperature}"
+
 class HandlerSystem:
     def desc(self):
         return "/system - change the system prompt"
@@ -251,7 +281,7 @@ This summary will be the only thing in the chat history after this command is ex
 
         summarize_history = [ChatMessage(role="system", content=summarize_prompt)] + [item for item in history if item.role != "system"]
 
-        for item in ask(history=summarize_history):
+        for item in ollama_ask(history=summarize_history):
             yield item
 
 class HandlerSave:
@@ -395,7 +425,7 @@ It is from the url {url}.
             f.write("".join(summary))
 
 
-handlers = [HandlerHelp(), HandlerSystem(), HandlerClear(), HandlerFile(), HandlerQuit(), HandlerLoad(), HandlerSave(), HandlerHistory(), HandlerSummarize(), HandlerDefault(), HandlerWebSearch(), HandlerUnknown(), HandlerCurl()]
+handlers = [HandlerSet(), HandlerHelp(), HandlerSystem(), HandlerClear(), HandlerFile(), HandlerQuit(), HandlerLoad(), HandlerSave(), HandlerHistory(), HandlerSummarize(), HandlerDefault(), HandlerWebSearch(), HandlerUnknown(), HandlerCurl()]
 
 
 def process_question(question: str, history: list[ChatMessage]):

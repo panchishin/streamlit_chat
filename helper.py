@@ -125,7 +125,7 @@ def docker_ask(system: str, question: str, history: ChatHistory, temperature: fl
 
 ask = docker_ask if SERVICE == "DOCKER" else ollama_ask
 """
-
+ask = ollama_ask
 
 
 def load_file(partial_name: str) -> tuple[str, str]:
@@ -281,7 +281,7 @@ This summary will be the only thing in the chat history after this command is ex
 
         summarize_history = [ChatMessage(role="system", content=summarize_prompt)] + [item for item in history if item.role != "system"]
 
-        for item in ollama_ask(history=summarize_history):
+        for item in ask(history=summarize_history):
             yield item
 
 class HandlerSave:
@@ -460,8 +460,8 @@ def main(history) -> None:
             for out in process_question(question=question, history=history):
                 print(end=out)
                 result.append(out)
-        except:
-            pass
+        except Exception as e:
+            result = ["Error found : ",f"{e}"]
 
         history.append(ChatMessage(role="assistant", content="".join(result)))
         print("\n")

@@ -49,83 +49,48 @@ def prepend_system_message(history:list[ChatMessage]):
 temperature = 0.4
 top_k = 20
 model = "qwen2.5:7b"
+model = "qwen2.5-coder-3b-instruct"
+max_tokens = -1
+url = 'http://localhost:1234/v1/chat/completions'
+# Define headers and data for the request
+headers = {
+    'Content-Type': 'application/json'
+}
 
-def ollama_ask(history: list[ChatMessage]):
+def lmstudio_ask(history: list[ChatMessage]):
 
     prepend_system_message(history)
 
-    payload = {
-        "model": model,
+    data = {
+        "model": "qwen2.5-coder-3b-instruct",
         "messages": list({"role": item.role, "content": item.content } for item in history),
-        "options" : {"temperature":temperature, "top-k":top_k},
-        "stream": True,
+        "temperature": 0.7,
+        "max_tokens": -1,
+        "stream": True
     }
 
-    response = requests.post("http://localhost:11434/api/chat", data=json.dumps(payload), stream=True)
-
+    response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=data, stream=True)
     try:
         for chunk in response.iter_content(chunk_size=None):
             if chunk:
-                chunk = json.loads(chunk.decode('utf-8'))
-                chunk = chunk.get("message",{}).get("content","")
-                yield chunk
+                
+                chunk = chunk.decode('utf-8')[6:]
+                try:
+                    chunk = json.loads(chunk)
+                    chunk = chunk["choices"][0]
+                    # print(json.dumps(chunk,indent=4))
+                    yield chunk.get("delta",{}).get("content","")
+                    if chunk.get("finish_reason",None) is not None:
+                        break 
+                except Exception as e:
+                    yield f" [{e}] "
 
     except Exception as e:
-        print(e)
+       print(e)
 
-"""
-def docker_ask(system: str, question: str, history: ChatHistory, temperature: float = 0.01, record: bool = True):
-    user_question = {
-        "role": "user",
-        "content": question,
-    }
 
-    if record:
-        history.append(user_question)
 
-    messages = [{
-        "role": "system",
-        "content": system
-    }]
-
-    messages.extend(history.history)
-    messages.append(user_question)
-
-    payload = {
-        "model": "ai/qwen2.5:latest",
-        "messages": messages,
-        "options" : {"temperature":temperature},
-        "stream": True,
-    }
-
-    response = requests.post("http://localhost:12434/engines/llama.cpp/v1/chat/completions", data=json.dumps(payload), stream=True)
-
-    result = []
-    try:
-        for chunk in response.iter_content(chunk_size=None):
-            decoded_chunk = chunk.decode('utf-8')
-            if "[DONE]\n\n" in decoded_chunk:
-                break
-            decoded_chunk = decoded_chunk.replace('data: ', '')
-            decoded_chunk = json.loads(decoded_chunk)
-
-            if 'choices' in decoded_chunk:
-                decoded_chunk = decoded_chunk['choices'][0]['delta'].get('content', '')
-            yield decoded_chunk
-            if record:
-                result.append(decoded_chunk)
-    except Exception as e:
-        print(e)
-
-    if record:
-        history.append({
-            "role": "assistant",
-            "content": "".join(result)
-        })
-
-ask = docker_ask if SERVICE == "DOCKER" else ollama_ask
-"""
-ask = ollama_ask
+ask = lmstudio_ask
 
 
 def load_file(partial_name: str) -> tuple[str, str]:
